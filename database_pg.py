@@ -14,7 +14,7 @@ def init_db():
     conn = get_conn()
     cur = conn.cursor()
 
-    # Create table if not exists
+    # Create table
     cur.execute("""
         CREATE TABLE IF NOT EXISTS extracted_emails (
             id SERIAL PRIMARY KEY,
@@ -28,7 +28,15 @@ def init_db():
         );
     """)
 
-    # 🔥 THIS IS THE FIX (DO NOT SKIP)
+    # 🔥 REMOVE DUPLICATES (KEEP LATEST)
+    cur.execute("""
+        DELETE FROM extracted_emails a
+        USING extracted_emails b
+        WHERE a.email = b.email
+        AND a.id < b.id;
+    """)
+
+    # 🔥 CREATE UNIQUE INDEX (REQUIRED FOR ON CONFLICT)
     cur.execute("""
         CREATE UNIQUE INDEX IF NOT EXISTS extracted_emails_email_unique
         ON extracted_emails (email);
@@ -74,16 +82,8 @@ def insert_email(keyword, email, source, website, linkedin, facebook):
         (keyword, email, source, website, linkedin, facebook, created_at)
         VALUES (%s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (email) DO NOTHING
-        RETURNING id
-    """, (
-        keyword,
-        email,
-        source,
-        website,
-        linkedin,
-        facebook,
-        datetime.now()
-    ))
+        RETURNING id;
+    """, (keyword, email, source, website, linkedin, facebook, datetime.now()))
 
     if cur.fetchone():
         inserted = True
@@ -97,7 +97,6 @@ def insert_email(keyword, email, source, website, linkedin, facebook):
 
 def search_emails(keyword="", source="", date_from=None, date_to=None):
     conn = get_conn()
-
     query = "SELECT * FROM extracted_emails WHERE 1=1"
     params = []
 
