@@ -5,50 +5,60 @@ from bs4 import BeautifulSoup
 from ddgs import DDGS
 
 MAX_RESULTS = 5
-SLEEP_PAGE = 1
-
 HEADERS = {"User-Agent": "Mozilla/5.0"}
 
-EMAIL_REGEX = re.compile(
-    r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
-)
+EMAIL_REGEX = re.compile(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}")
+LINKEDIN_REGEX = re.compile(r"https?://(www\.)?linkedin\.com/[^\s\"'>]+", re.I)
+FACEBOOK_REGEX = re.compile(r"https?://(www\.)?facebook\.com/[^\s\"'>]+", re.I)
 
-BAD_EMAILS = [
-    "noreply", "donotreply", "example@", "test@", ".png", ".jpg"
+BAD_CONTEXT = [
+    "noreply", "no-reply", "donotreply", "example@", "test@", "sample@",
+    ".png", ".jpg", ".jpeg", ".svg"
 ]
+
 
 def is_valid_email(email):
     email = email.lower()
-    return not any(bad in email for bad in BAD_EMAILS)
+    if any(bad in email for bad in BAD_CONTEXT):
+        return False
+    return True
 
-def extract_page(url):
-    data = {
-        "emails": set(),
-        "linkedin": None,
-        "facebook": None
-    }
+
+def get_website_from_email(email):
+    try:
+        return f"https://{email.split('@')[1]}"
+    except:
+        return ""
+
+
+def scrape_page(url):
+    data = {"emails": set(), "linkedin": None, "facebook": None}
 
     try:
-        r = requests.get(url, headers=HEADERS, timeout=12)
+        r = requests.get(url, headers=HEADERS, timeout=10)
         if r.status_code != 200:
             return data
 
         soup = BeautifulSoup(r.text, "html.parser")
         text = soup.get_text(" ", strip=True)
 
-        for e in EMAIL_REGEX.findall(text):
-            if is_valid_email(e):
-                data["emails"].add(e.lower())
+        for email in EMAIL_REGEX.findall(text):
+            if is_valid_email(email):
+                data["emails"].add(email)
 
-        if "linkedin.com" in r.text:
-            data["linkedin"] = "https://linkedin.com"
-        if "facebook.com" in r.text:
-            data["facebook"] = "https://facebook.com"
+        li = LINKEDIN_REGEX.search(r.text)
+        fb = FACEBOOK_REGEX.search(r.text)
+
+        if li:
+            data["linkedin"] = li.group(0)
+        if fb:
+            data["facebook"] = fb.group(0)
 
     except:
         pass
 
     return data
+
 
 def search_and_extract_emails(keyword):
     results = {}
@@ -60,20 +70,18 @@ def search_and_extract_emails(keyword):
             if not url:
                 continue
 
-            data = extract_page(url)
+            page = scrape_page(url)
 
-            if not data["emails"]:
-                data = extract_page(url.rstrip("/") + "/contact")
+            for email in page["emails"]:
+                if email not in results:
+                    results[email] = {
+                        "email": email,
+                        "website": get_website_from_email(email),
+                        "source_url": url,
+                        "linkedin": page["linkedin"],
+                        "facebook": page["facebook"]
+                    }
 
-            for email in data["emails"]:
-                results[email] = {
-                    "email": email,
-                    "website": f"https://{email.split('@')[1]}",
-                    "source_url": url,
-                    "linkedin": data["linkedin"],
-                    "facebook": data["facebook"]
-                }
-
-            time.sleep(SLEEP_PAGE)
+            time.sleep(1)
 
     return list(results.values())
