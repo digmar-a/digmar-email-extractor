@@ -18,12 +18,13 @@ def init_db():
         CREATE TABLE IF NOT EXISTS extracted_emails (
             id SERIAL PRIMARY KEY,
             keyword TEXT,
-            email TEXT UNIQUE,
+            email TEXT,
             source TEXT,
             website TEXT,
             linkedin TEXT,
             facebook TEXT,
-            created_at TIMESTAMP DEFAULT NOW()
+            created_at TIMESTAMP DEFAULT NOW(),
+            CONSTRAINT extracted_emails_email_unique UNIQUE (email)
         );
     """)
 
@@ -48,7 +49,7 @@ def truncate_database():
     cur.close()
     conn.close()
 
-def insert_email(keyword, email, source, website, linkedin, facebook):
+def insert_email(keyword, email, source, website=None, linkedin=None, facebook=None):
     inserted = False
     truncated = False
 
