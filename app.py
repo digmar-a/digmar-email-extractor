@@ -74,12 +74,18 @@ if page == "📧 Extract Emails":
 
                     extracted = search_and_extract_emails(keyword)
 
-                    if not extracted:
+                    if not extracted or not isinstance(extracted, list):
                         st.info("No email IDs found")
+                        continue
 
-                    for email, source in extracted:
-                        # INSERT ONLY IF NOT EXISTS (handled in DB)
+                    for item in extracted:
+                        if not isinstance(item, (list, tuple)) or len(item) != 2:
+                            continue
+
+                        email, source = item
+
                         inserted, truncated = insert_email(keyword, email, source)
+
                         if truncated:
                             st.warning("⚠️ Database reached storage limit. Old data was auto-cleared.")
 
@@ -89,6 +95,7 @@ if page == "📧 Extract Emails":
                                 "email": email,
                                 "source": source
                             })
+
 
                     progress.progress((i + 1) / total)
 
