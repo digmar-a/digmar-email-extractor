@@ -1,12 +1,14 @@
 import psycopg2
 import pandas as pd
 import streamlit as st
-from datetime import datetime
 
 MAX_DB_SIZE_GB = 0.45
 
 def get_conn():
-    return psycopg2.connect(st.secrets["DATABASE_URL"])
+    return psycopg2.connect(
+        st.secrets["DATABASE_URL"],
+        sslmode="require"
+    )
 
 def init_db():
     conn = get_conn()
@@ -59,13 +61,12 @@ def insert_email(keyword, email, source, website, linkedin, facebook):
 
     cur.execute("""
         INSERT INTO extracted_emails
-        (keyword, email, source, website, linkedin, facebook, created_at)
-        VALUES (%s, %s, %s, %s, %s, %s, %s)
-        ON CONFLICT (email) DO NOTHING
-        RETURNING id
-    """, (keyword, email, source, website, linkedin, facebook, datetime.now()))
+        (keyword, email, source, website, linkedin, facebook)
+        VALUES (%s, %s, %s, %s, %s, %s)
+        ON CONFLICT (email) DO NOTHING;
+    """, (keyword, email, source, website, linkedin, facebook))
 
-    if cur.fetchone():
+    if cur.rowcount == 1:
         inserted = True
 
     conn.commit()
