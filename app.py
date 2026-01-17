@@ -12,10 +12,12 @@ from database_pg import (
 
 from scraper_email import search_and_extract_emails
 
+
 # ============================
-# INIT DB
+# INIT DATABASE
 # ============================
 init_db()
+
 
 # ============================
 # PAGE CONFIG
@@ -25,6 +27,7 @@ st.set_page_config(
     layout="wide"
 )
 
+
 # ============================
 # SIDEBAR
 # ============================
@@ -33,13 +36,14 @@ st.sidebar.title("📂 Navigation")
 try:
     db_size = get_database_size_gb()
     st.sidebar.info(f"🗄 Neon DB Usage: {db_size} GB / 0.5 GB")
-except:
+except Exception:
     st.sidebar.warning("⚠️ DB size unavailable")
 
 page = st.sidebar.radio(
     "Select Option",
     ["📧 Extract Emails", "🗄 View Database"]
 )
+
 
 # ============================
 # 📧 EXTRACT EMAILS
@@ -53,81 +57,88 @@ if page == "📧 Extract Emails":
         type=["xlsx"]
     )
 
-    if uploaded:
+    if uploaded is not None:
         df = pd.read_excel(uploaded)
 
         if "keyword" not in df.columns:
             st.error("❌ Excel must contain a column named `keyword`")
-        else:
-            st.success("✔ File loaded successfully")
+            st.stop()
 
-            if st.button("🚀 Start Email Extraction"):
-                progress = st.progress(0)
-                all_results = []
+        st.success("✔ File loaded successfully")
 
-                keywords = df["keyword"].dropna().unique().tolist()
-                total = len(keywords)
+        if st.button("🚀 Start Email Extraction"):
+            progress = st.progress(0)
+            all_results = []
 
-                for i, keyword in enumerate(keywords):
-                    st.write(f"🔍 Searching: **{keyword}**")
+            keywords = df["keyword"].dropna().astype(str).unique().tolist()
+            total = len(keywords)
 
-                    extracted = search_and_extract_emails(keyword)
+            if total == 0:
+                st.warning("⚠️ No keywords found in file")
+                st.stop()
 
-                    if not extracted:
-                        st.info("No emails found")
-                        progress.progress((i + 1) / total)
+            for i, keyword in enumerate(keywords):
+                st.write(f"🔍 Searching: **{keyword}**")
+
+                extracted = search_and_extract_emails(keyword)
+
+                if not extracted or not isinstance(extracted, list):
+                    progress.progress((i + 1) / total)
+                    continue
+
+                for item in extracted:
+                    email = item.get("email")
+                    source = item.get("source_url")
+                    website = item.get("website")
+                    linkedin = item.get("linkedin")
+                    facebook = item.get("facebook")
+
+                    if not email or not source:
                         continue
 
-                    for item in extracted:
-                        email = item.get("email")
-                        source = item.get("source_url")
-                        website = item.get("website")
-                        linkedin = item.get("linkedin")
-                        facebook = item.get("facebook")
-
-                        if not email or not source:
-                            continue
-
-                        inserted, truncated = insert_email(
-                            keyword,
-                            email,
-                            source,
-                            website,
-                            linkedin,
-                            facebook
-                        )
-
-                        if truncated:
-                            st.warning("⚠️ DB limit reached — old data auto-cleared")
-
-                        if inserted:
-                            all_results.append({
-                                "keyword": keyword,
-                                "email": email,
-                                "website": website,
-                                "source": source,
-                                "linkedin": linkedin,
-                                "facebook": facebook
-                            })
-
-                    progress.progress((i + 1) / total)
-
-                if all_results:
-                    out_df = pd.DataFrame(all_results)
-                    st.subheader("✅ Newly Stored Emails")
-                    st.dataframe(out_df, use_container_width=True)
-
-                    buffer = io.BytesIO()
-                    out_df.to_excel(buffer, index=False)
-                    buffer.seek(0)
-
-                    st.download_button(
-                        "📥 Download New Emails",
-                        buffer,
-                        "new_emails.xlsx"
+                    inserted, truncated = insert_email(
+                        keyword=keyword,
+                        email=email,
+                        source=source,
+                        website=website,
+                        linkedin=linkedin,
+                        facebook=facebook
                     )
-                else:
-                    st.info("ℹ️ No new emails stored (duplicates or none found)")
+
+                    if truncated:
+                        st.warning("⚠️ Database limit reached — old data auto-cleared")
+
+                    if inserted:
+                        all_results.append({
+                            "keyword": keyword,
+                            "email": email,
+                            "website": website,
+                            "source": source,
+                            "linkedin": linkedin,
+                            "facebook": facebook
+                        })
+
+                progress.progress((i + 1) / total)
+
+            if all_results:
+                out_df = pd.DataFrame(all_results)
+
+                st.subheader("✅ Newly Stored Emails")
+                st.dataframe(out_df, use_container_width=True)
+
+                buffer = io.BytesIO()
+                out_df.to_excel(buffer, index=False)
+                buffer.seek(0)
+
+                st.download_button(
+                    label="📥 Download New Emails (Excel)",
+                    data=buffer,
+                    file_name="new_emails.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+            else:
+                st.info("ℹ️ No new emails stored (duplicates or none found)")
+
 
 # ============================
 # 🗄 VIEW DATABASE
@@ -139,18 +150,18 @@ if page == "🗄 View Database":
     col1, col2, col3, col4 = st.columns(4)
 
     with col1:
-        keyword = st.text_input("Keyword")
+        keyword = st.text_input("🔎 Keyword")
 
     with col2:
-        date_from = st.date_input("From Date", value=date.today())
+        date_from = st.date_input("📅 From Date", value=date.today())
 
     with col3:
-        date_to = st.date_input("To Date", value=date.today())
+        date_to = st.date_input("📅 To Date", value=date.today())
 
     with col4:
-        source = st.text_input("Source URL")
+        source = st.text_input("🔎 Source URL")
 
-    if st.button("🔍 Search"):
+    if st.button("🔍 Search Database"):
         df = search_emails(
             keyword=keyword,
             source=source,
@@ -159,7 +170,7 @@ if page == "🗄 View Database":
         )
 
         if df.empty:
-            st.warning("No records found")
+            st.warning("❌ No records found")
         else:
             st.success(f"✔ {len(df)} records found")
             st.dataframe(df, use_container_width=True)
