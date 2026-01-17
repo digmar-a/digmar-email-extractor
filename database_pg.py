@@ -1,19 +1,20 @@
 import psycopg2
 import pandas as pd
 import streamlit as st
+from datetime import datetime
 
 MAX_DB_SIZE_GB = 0.45
 
+
 def get_conn():
-    return psycopg2.connect(
-        st.secrets["DATABASE_URL"],
-        sslmode="require"
-    )
+    return psycopg2.connect(st.secrets["DATABASE_URL"])
+
 
 def init_db():
     conn = get_conn()
     cur = conn.cursor()
 
+    # Create table if not exists
     cur.execute("""
         CREATE TABLE IF NOT EXISTS extracted_emails (
             id SERIAL PRIMARY KEY,
@@ -23,14 +24,20 @@ def init_db():
             website TEXT,
             linkedin TEXT,
             facebook TEXT,
-            created_at TIMESTAMP DEFAULT NOW(),
-            CONSTRAINT extracted_emails_email_unique UNIQUE (email)
+            created_at TIMESTAMP DEFAULT NOW()
         );
+    """)
+
+    # 🔥 THIS IS THE FIX (DO NOT SKIP)
+    cur.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS extracted_emails_email_unique
+        ON extracted_emails (email);
     """)
 
     conn.commit()
     cur.close()
     conn.close()
+
 
 def get_database_size_gb():
     conn = get_conn()
@@ -41,6 +48,7 @@ def get_database_size_gb():
     conn.close()
     return round(size / (1024 ** 3), 3)
 
+
 def truncate_database():
     conn = get_conn()
     cur = conn.cursor()
@@ -49,7 +57,8 @@ def truncate_database():
     cur.close()
     conn.close()
 
-def insert_email(keyword, email, source, website=None, linkedin=None, facebook=None):
+
+def insert_email(keyword, email, source, website, linkedin, facebook):
     inserted = False
     truncated = False
 
@@ -62,12 +71,21 @@ def insert_email(keyword, email, source, website=None, linkedin=None, facebook=N
 
     cur.execute("""
         INSERT INTO extracted_emails
-        (keyword, email, source, website, linkedin, facebook)
-        VALUES (%s, %s, %s, %s, %s, %s)
-        ON CONFLICT (email) DO NOTHING;
-    """, (keyword, email, source, website, linkedin, facebook))
+        (keyword, email, source, website, linkedin, facebook, created_at)
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
+        ON CONFLICT (email) DO NOTHING
+        RETURNING id
+    """, (
+        keyword,
+        email,
+        source,
+        website,
+        linkedin,
+        facebook,
+        datetime.now()
+    ))
 
-    if cur.rowcount == 1:
+    if cur.fetchone():
         inserted = True
 
     conn.commit()
@@ -75,6 +93,7 @@ def insert_email(keyword, email, source, website=None, linkedin=None, facebook=N
     conn.close()
 
     return inserted, truncated
+
 
 def search_emails(keyword="", source="", date_from=None, date_to=None):
     conn = get_conn()
