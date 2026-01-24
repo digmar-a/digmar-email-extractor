@@ -40,6 +40,8 @@ if page == "📧 Extract Emails":
 
         if "keyword" not in df.columns:
             st.error("Excel must contain `keyword` column")
+        elif "keywords" not in df.columns:
+            st.error("Excel must contain `keywords` column")
         else:
             if st.button("🚀 Start Extraction"):
                 progress = st.progress(0)
@@ -94,3 +96,4 @@ if page == "🗄 View Database":
     if st.button("Search"):
         df = search_emails(keyword, source, str(date_from), str(date_to))
         st.dataframe(df)
+
